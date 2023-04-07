@@ -25,8 +25,10 @@ websites = config['websites']
 def check_website(url):
     try:
         response = requests.get(url)
-        if response.status_code != 200:
-            return "サイトにアクセスできません"
+        if response.status_code >= 400 and response.status_code < 500:
+            return "ページが見当たらないです"
+        elif response.status_code >= 500:
+            return "サーバーエラー"
     except Exception as e:
         return "サイトにアクセスできません"
     return None
@@ -56,7 +58,7 @@ def handler(event, context):
     jst = pytz.timezone('Asia/Tokyo')
     now = datetime.now(jst).strftime("%Y/%m/%d %H:%M")
     issue_count = 0
-    notify_message = f"\nチェック日時: {now}\n"
+    notify_message = f"\nチェック日時: {now}\nチェックサイト数: {len(websites)}件\n"
 
     issue_details = ""
     for url in websites:
@@ -64,20 +66,20 @@ def handler(event, context):
         ssl_error = check_ssl(url)
         issues = []
 
-        if ssl_error:
-            issues.append(f"・{ssl_error}")
-
         if accessibility_error:
             issues.append(f"・{accessibility_error}")
 
+        if ssl_error:
+            issues.append(f"・{ssl_error}")
+
         if issues:
-            issue_details += f"{url}\n" + "\n".join(issues) + "\n\n"
+            issue_details += f"\n\n{url}\n" + "\n".join(issues) + "\n\n"
             issue_count += 1
 
     if issue_count == 0:
-        notify_message += "監視中のサイトは問題ありません。\n"
+        notify_message += "監視中のサイトは問題ありません。"
     else:
-        notify_message += f"{issue_count}件のサイトに問題がありました。\n\n{issue_details}"
+        notify_message += f"{issue_count}件のサイトに問題がありました。{issue_details}"
 
     send_line_notify(line_token, notify_message)
 
