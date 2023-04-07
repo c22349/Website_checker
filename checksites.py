@@ -22,9 +22,10 @@ line_token = config['line_token']
 websites = config['websites']
 
 # Webサイトにアクセスできるかチェック
-def check_website(url):
+def check_http_website(url, auth=None):
     try:
-        response = requests.get(url)
+        parsed_url = urlparse(url)
+        response = requests.get(f'http://{parsed_url.netloc}', auth=auth)
         if response.status_code >= 400 and response.status_code < 500:
             return "ページが見当たらないです"
         elif response.status_code >= 500:
@@ -34,12 +35,10 @@ def check_website(url):
     return None
 
 # SSLの有効をチェック
-def check_ssl(url):
+def check_ssl(url, auth=None):
     try:
         parsed_url = urlparse(url)
         response = requests.get(f'https://{parsed_url.netloc}', verify=True)
-        if response.status_code != 200:
-            return "SSL証明書が無効"
     except Exception as e:
         return "SSL証明書が無効"
     return None
@@ -60,10 +59,21 @@ def handler(event, context):
     issue_count = 0
     notify_message = f"\nチェック日時: {now}\nチェックサイト数: {len(websites)}件\n"
 
+    # Basic認証が必要な場合
+    basic_auth = config.get("basic_auth")
+    auth = None
+    if basic_auth:
+        auth = (basic_auth["username"], basic_auth["password"])
+
     issue_details = ""
     for url in websites:
-        accessibility_error = check_website(url)
-        ssl_error = check_ssl(url)
+        accessibility_error = check_http_website(url, auth)
+        ssl_error = None
+        issues = []
+
+        if not accessibility_error:
+            ssl_error = check_ssl(url, auth)
+
         issues = []
 
         if accessibility_error:
@@ -73,13 +83,13 @@ def handler(event, context):
             issues.append(f"・{ssl_error}")
 
         if issues:
-            issue_details += f"\n\n{url}\n" + "\n".join(issues) + "\n\n"
+            issue_details += f"\n{url}\n" + "\n".join(issues) + "\n"
             issue_count += 1
 
     if issue_count == 0:
         notify_message += "監視中のサイトは問題ありません。"
     else:
-        notify_message += f"{issue_count}件のサイトに問題がありました。{issue_details}"
+        notify_message += f"{issue_count}件のサイトに問題がありました。\n{issue_details}"
 
     send_line_notify(line_token, notify_message)
 
